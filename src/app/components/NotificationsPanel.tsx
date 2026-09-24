@@ -1,0 +1,6 @@
+import { BellRing, X } from "lucide-react";
+import { StaffNotification } from "../types";
+
+export function NotificationsPanel({ notifications, close }: { notifications: StaffNotification[]; close: () => void }) {
+  return <div className="fixed inset-0 z-[110] flex justify-end bg-[#1c075c]/35"><section className="h-full w-full max-w-md bg-white shadow-2xl"><header className="flex items-center justify-between border-b border-gray-100 px-5 py-5"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl bg-[#f0ebff] text-[#1c075c]"><BellRing size={19}/></span><div><h2 className="font-['Space_Grotesk'] text-lg font-bold text-[#1c075c]">Notifikasi staff</h2><p className="text-xs text-[#39875b]">Broadcast dari Admin</p></div></div><button onClick={close}><X size={18}/></button></header><div className="space-y-3 bg-[#faf9fd] p-5">{notifications.length ? notifications.map(notification=><article key={notification.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-100"><p className="text-sm leading-6 text-[#1c075c]">{notification.body}</p><p className="mt-2 text-[11px] text-gray-400">{new Date(notification.createdAt).toLocaleString("id-ID")}</p></article>):<p className="py-10 text-center text-sm text-gray-400">Belum ada notifikasi.</p>}</div></section></div>;
+}
