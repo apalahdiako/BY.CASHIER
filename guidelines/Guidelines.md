@@ -1,4 +1,9 @@
-**Add your own guidelines here**
+## BY.CASHIER owner information pages
+
+- Use Poppins for the Privacy Policy, About, and Donate pages.
+- Keep their page ground pure white; content surfaces are only dark-purple gradients (#1A1150 to #2A1D7A) with a 1px rgba(255,255,255,.14) border and large rounded corners.
+- Use #F4D900 only for important emphasis and primary CTA actions. Never introduce light cards inside the purple content surface.
+- Header is white, sticky, compact, and uses a solid purple circular back control.
 <!--
 
 System Guidelines

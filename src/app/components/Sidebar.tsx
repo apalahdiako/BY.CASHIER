@@ -1,17 +1,25 @@
-import { BarChart3, Heart, LayoutDashboard, MonitorPlay, PackageCheck, ReceiptText, Settings, ShoppingCart, Utensils, WalletCards, X } from "lucide-react";
+import { BadgePercent, BarChart3, BotMessageSquare, Boxes, Heart, HeartHandshake, Info, LayoutDashboard, MonitorPlay, MonitorUp, PackageCheck, ReceiptText, Settings, ShieldCheck, ShoppingCart, Undo2, Utensils, WalletCards, X } from "lucide-react";
 import { Page, Staff } from "../types";
 
 const navItems = [
-  { page: "dashboard" as Page, label: "Dashboard", icon: LayoutDashboard },
+  { page: "dashboard" as Page, label: "Dashboard Manager", icon: LayoutDashboard },
   { page: "order" as Page, label: "Kasir", icon: ShoppingCart },
+  { page: "kds" as Page, label: "Kitchen Display", icon: MonitorUp },
+  { page: "discounts" as Page, label: "Diskon", icon: BadgePercent },
+  { page: "refunds" as Page, label: "Void / Refund", icon: Undo2 },
+  { page: "stock" as Page, label: "Stok", icon: Boxes },
   { page: "favorites" as Page, label: "Sering Dipesan", icon: Heart },
-  { page: "history" as Page, label: "Riwayat Transaksi", icon: PackageCheck },
+  { page: "history" as Page, label: "Laporan Transaksi", icon: PackageCheck },
   { page: "wallet" as Page, label: "Kas Shift", icon: WalletCards },
   { page: "settings" as Page, label: "Pengaturan", icon: Settings },
   { page: "cctv" as Page, label: "CCTV Monitoring", icon: MonitorPlay },
   { page: "closing" as Page, label: "Closing Kasir", icon: ReceiptText },
   { page: "reports" as Page, label: "Report", icon: BarChart3 },
   { page: "settlement" as Page, label: "Settlement", icon: WalletCards },
+  { page: "ai-assistant" as Page, label: "Asisten AI", icon: BotMessageSquare },
+  { page: "privacy-policy" as Page, label: "Privacy Policy", icon: ShieldCheck },
+  { page: "about" as Page, label: "About BY.CASHIER", icon: Info },
+  { page: "donate" as Page, label: "Donate Saweria", icon: HeartHandshake },
 ];
 
 function isActive(navPage: Page, currentPage: Page) {
@@ -30,10 +38,14 @@ interface SidebarProps {
 }
 
 export function Sidebar({ active, go, open, close, staff }: SidebarProps) {
-  const canDashboard = staff?.role !== "Kasir" && staff?.role !== "Kitchen Display";
-  const canCctv = staff?.role === "Admin Owner" || staff?.role === "Manager Dashboard" && Boolean(staff.permissions.includes("CCTV Monitoring"));
-  const operationPermission: Partial<Record<Page, string>> = { closing: "Closing Kasir", reports: "Report", settlement: "Settlement" };
-  const visibleNav = navItems.filter(item => (canDashboard || item.page !== "dashboard") && (item.page !== "cctv" || canCctv) && (!operationPermission[item.page] || staff?.role === "Admin Owner" || Boolean(staff?.permissions.includes(operationPermission[item.page]!))));
+  const has = (permission: string) => Boolean(staff?.permissions.includes(permission));
+  const isBusinessOwner = staff?.role === "Admin Owner";
+  const canDashboard = staff?.role === "Admin Owner" ? has("Dashboard Manager") : staff?.role !== "Kasir" && staff?.role !== "Kitchen Display";
+  const canCctv = has("CCTV Monitoring");
+  // Kasir POS adalah jalur utama sesudah akun aktif; pembatasan detail tindakan tetap berlaku di halaman POS.
+  const permissionByPage: Partial<Record<Page, string>> = { history: "Laporan", kds: "Kitchen Display", discounts: "Diskon", refunds: "Void / refund", stock: "Stok", cctv: "CCTV Monitoring", closing: "Closing Kasir", reports: "Report", settlement: "Settlement" };
+  const ownerOnlyPages: Page[] = ["privacy-policy", "about", "donate"];
+  const visibleNav = navItems.filter(item => (canDashboard || item.page !== "dashboard") && (!ownerOnlyPages.includes(item.page) || isBusinessOwner) && (!permissionByPage[item.page] || has(permissionByPage[item.page]!) || isBusinessOwner));
   return (
     <>
       {/* Backdrop */}

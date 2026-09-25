@@ -12,7 +12,15 @@ export type Page =
   | "cctv"
   | "closing"
   | "reports"
-  | "settlement";
+  | "settlement"
+  | "kds"
+  | "discounts"
+  | "refunds"
+  | "stock"
+  | "ai-assistant"
+  | "privacy-policy"
+  | "about"
+  | "donate";
 
 export type Food = {
   id: number;

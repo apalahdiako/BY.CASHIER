@@ -19,7 +19,11 @@ import { TrackingPage } from "./components/pages/TrackingPage";
 import { WalletPage } from "./components/pages/WalletPage";
 import { SettingsPage } from "./components/pages/SettingsPage";
 import { AccountLogin, ProfilePage } from "./components/pages/ProfilePage";
+import { AccessToolsPage } from "./components/pages/AccessToolsPage";
+import { SupportToolsPage } from "./components/pages/SupportToolsPage";
+import { OwnerInfoPage } from "./components/pages/OwnerInfoPage";
 import { SuperAdminDashboard, SuperAdminLogin } from "./components/pages/SuperAdminDashboard";
+import { FounderControlCenter } from "./components/pages/FounderControlCenter";
 
 const pageTitles: Partial<Record<Page, string>> = {
   order: "Kasir",
@@ -28,7 +32,19 @@ const pageTitles: Partial<Record<Page, string>> = {
   wallet: "Kas Shift",
   settings: "Pengaturan Kasir",
   profile: "Profil Saya",
+  kds: "Kitchen Display",
+  discounts: "Diskon",
+  refunds: "Void / Refund",
+  stock: "Stok",
+  "ai-assistant": "Asisten AI",
+  "privacy-policy": "Privacy Policy",
+  about: "Tentang BY.CASHIER",
+  donate: "Donate",
 };
+
+const ownerOperationalPermissions = ["Kasir POS", "Kitchen Display", "Diskon", "Void / refund", "Laporan", "Stok", "Dashboard Manager", "CCTV Monitoring", "Closing Kasir", "Report", "Settlement"];
+const approvedOwnerAliases = ["NASIBAKARBUENA", "NASIBAKARIBUENA"];
+const forcedPendingOwnerIds: string[] = [];
 
 export function StoreApp() {
   const { signOut } = useClerk();
@@ -53,6 +69,7 @@ export function StoreApp() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [storeSettings, setStoreSettings] = useState<StoreSettings>(defaultStoreSettings);
   const [currentStaff, setCurrentStaff] = useState<Staff | null>(null);
+  const [ownerApproval, setOwnerApproval] = useState<"pending" | "rejected" | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<MenuCategory[]>(defaultCategories);
@@ -67,9 +84,60 @@ export function StoreApp() {
     if (!isSignedIn || !clerkUser) { setCurrentStaff(null); return; }
     const accountName = clerkUser.username || clerkUser.firstName || "Staff";
     const savedStaff = staff.find(item => item.name.toLocaleLowerCase("id-ID") === accountName.toLocaleLowerCase("id-ID"));
-    const isOwnerBootstrap = accountName.trim().toLocaleUpperCase("id-ID") === "BAYU OWNER";
-    setCurrentStaff(savedStaff || { id: clerkUser.id, name: accountName, role: isOwnerBootstrap ? "Admin Owner" : "Kasir", shift: isOwnerBootstrap ? "Owner · Full access" : "Pagi · 08.00–16.00", hourlyRate: 0, permissions: isOwnerBootstrap ? ["Kasir POS", "CCTV Monitoring", "Closing Kasir", "Report", "Settlement"] : ["Kasir POS"], attendance: "Belum check-in", photo: clerkUser.imageUrl });
+    const normalizedAccountName = accountName.trim().toLocaleUpperCase("id-ID");
+    const isOwnerBootstrap = ["BAYU OWNER", "BAYU_OWNER", "BAYUOWNER"].includes(normalizedAccountName);
+    const isApprovedOwner = approvedOwnerAliases.includes(normalizedAccountName);
+    setCurrentStaff(savedStaff || { id: clerkUser.id, name: accountName, role: isOwnerBootstrap || isApprovedOwner ? "Admin Owner" : "Kasir", shift: isOwnerBootstrap || isApprovedOwner ? "Owner · Full access" : "Pagi · 08.00–16.00", hourlyRate: 0, permissions: isOwnerBootstrap || isApprovedOwner ? ownerOperationalPermissions : ["Kasir POS"], attendance: "Belum check-in", photo: clerkUser.imageUrl });
   }, [clerkLoaded, isSignedIn, clerkUser, staff]);
+
+  useEffect(() => {
+    if (!clerkLoaded || !isSignedIn || !clerkUser) { setOwnerApproval(null); return; }
+    const accountName = clerkUser.username || clerkUser.firstName || "";
+    const email = clerkUser.primaryEmailAddress?.emailAddress?.toLowerCase() || "";
+    const normalizedAccountName = accountName.trim().toLocaleUpperCase("id-ID");
+    const isOwnerBootstrap = ["BAYU OWNER", "BAYU_OWNER", "BAYUOWNER"].includes(normalizedAccountName);
+    const isApprovedOwner = approvedOwnerAliases.includes(normalizedAccountName);
+    const isForcedPending = forcedPendingOwnerIds.includes(accountName.trim().toUpperCase());
+    if (isOwnerBootstrap || isApprovedOwner) {
+      setOwnerApproval(null);
+      setCurrentStaff(current => current ? { ...current, role: "Admin Owner", shift: "Owner · Full access", permissions: ownerOperationalPermissions } : { id: clerkUser.id, name: accountName, role: "Admin Owner", shift: "Owner · Full access", hourlyRate: 0, permissions: ownerOperationalPermissions, attendance: "Belum check-in", photo: clerkUser.imageUrl });
+      return;
+    }
+    const pendingKey = `bycashier-owner-approval:${email}`;
+    // Bersihkan penanda fallback lama untuk akun manual yang sudah direview Founder.
+    if (["NASIBAKARBUENA", "NASIBAKARIBUENA"].includes(accountName.trim().toUpperCase())) window.localStorage.removeItem(pendingKey);
+    const forcedKey = `bycashier-forced-pending:${accountName.trim().toUpperCase()}`;
+    const forcedApprovedKey = `bycashier-forced-approved:${accountName.trim().toUpperCase()}`;
+    const manualApprovalRaw = window.localStorage.getItem("bycashier-manual-approval:nasibakaribuena");
+    if (["NASIBAKARBUENA", "NASIBAKARIBUENA"].includes(accountName.trim().toUpperCase()) && manualApprovalRaw) {
+      try {
+        const manualApproval = JSON.parse(manualApprovalRaw) as { status?: string; permissions?: string[] };
+        if (manualApproval.status === "approved") {
+          setOwnerApproval(null);
+          setCurrentStaff(current => current ? { ...current, role: "Admin Owner", shift: "Owner · Controlled access", permissions: ["Kasir POS", "Kitchen Display", "Diskon", "Void / refund", "Laporan", "Stok", "Dashboard Manager", "CCTV Monitoring", "Closing Kasir", "Report", "Settlement"] } : { id: clerkUser.id, name: accountName, role: "Admin Owner", shift: "Owner · Controlled access", hourlyRate: 0, permissions: ["Kasir POS", "Kitchen Display", "Diskon", "Void / refund", "Laporan", "Stok", "Dashboard Manager", "CCTV Monitoring", "Closing Kasir", "Report", "Settlement"], attendance: "Belum check-in", photo: clerkUser.imageUrl });
+          return;
+        }
+      } catch { /* lanjutkan evaluasi status server */ }
+    }
+    if (isForcedPending && !window.localStorage.getItem(forcedApprovedKey)) {
+      window.localStorage.setItem(pendingKey, "queued");
+      setOwnerApproval("pending");
+      setCurrentStaff(null);
+      if (!window.localStorage.getItem(forcedKey)) {
+        window.localStorage.setItem(forcedKey, "queued");
+        void fetch(`${apiBase}/platform/approvals`, { method: "POST", headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "application/json" }, body: JSON.stringify({ ownerId: clerkUser.id, ownerName: accountName, email, status: "pending", plan: "Trial 14 hari", submittedAt: new Date().toISOString() }) });
+      }
+    }
+    if (email && window.localStorage.getItem(pendingKey)) {
+      setOwnerApproval("pending");
+      setCurrentStaff(null);
+    }
+    let active = true;
+    const checkApproval = async () => {
+      try { const response = await fetch(`${apiBase}/platform/approvals`, { headers: { Authorization: `Bearer ${publicAnonKey}` } }); const data = await response.json(); const row = (data.records || []).find((item: { ownerId?: string; ownerName?: string; email?: string; permissions?: string[] }) => item.ownerId === clerkUser.id || item.ownerName?.toLowerCase() === accountName.toLowerCase() || item.email?.toLowerCase() === email); if (!active || !row) return; if (row.status === "approved") { window.localStorage.removeItem(pendingKey); if (isForcedPending) window.localStorage.setItem(forcedApprovedKey, "approved"); setOwnerApproval(null); setCurrentStaff(current => current ? { ...current, role: "Admin Owner", shift: "Owner · Controlled access", permissions: row.permissions?.length ? row.permissions : ["Kasir POS"] } : current); } else if (row.status === "pending" || row.status === "rejected") { setCurrentStaff(null); setOwnerApproval(row.status); } } catch { /* penanda pending lokal tetap mengunci akun sampai server tersedia */ }
+    };
+    void checkApproval(); const timer = window.setInterval(() => void checkApproval(), 4000); return () => { active = false; window.clearInterval(timer); };
+  }, [apiBase, clerkLoaded, clerkUser, isSignedIn]);
 
   useEffect(() => {
     const loadVouchers = async () => {
@@ -127,7 +195,7 @@ export function StoreApp() {
   }, [apiBase]);
 
   const go = (next: Page) => {
-    const allowedCctv = currentStaff?.role === "Admin Owner" || currentStaff?.role === "Manager Dashboard" && Boolean(currentStaff.permissions.includes("CCTV Monitoring"));
+    const allowedCctv = Boolean(currentStaff?.permissions.includes("CCTV Monitoring"));
     setPage(!allowedCctv && next === "cctv" ? "order" : (currentStaff?.role === "Kasir" || currentStaff?.role === "Kitchen Display") && next === "dashboard" ? "order" : next === "checkout" ? "order" : next);
     setSidebarOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -211,6 +279,7 @@ export function StoreApp() {
   const loginStaff = async (name: string, pin: string) => { const response = await fetch(`${apiBase}/staff/login`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` }, body: JSON.stringify({ name, pin }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Login gagal"); setCurrentStaff(data.staff); if (data.staff.role === "Kasir" || data.staff.role === "Kitchen Display") setPage("order"); showNotice(`Selamat datang, ${data.staff.name}.`); };
   const logoutStaff = async () => { await signOut(); setCurrentStaff(null); setPage("dashboard"); setSidebarOpen(false); showNotice("Akun staff sudah logout."); };
   const saveProfile = async (next: Pick<Staff, "name" | "photo">) => { if (!currentStaff) return; const response = await fetch(`${apiBase}/staff/${currentStaff.id}/profile`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` }, body: JSON.stringify(next) }); const data = await response.json(); if (!response.ok || !data.staff) throw new Error(data.error || "Profil gagal diperbarui"); setCurrentStaff(data.staff); setStaff(current=>current.map(item=>item.id===data.staff.id?data.staff:item)); new BroadcastChannel("bycashier-vouchers").postMessage({type:"profile-updated"}); showNotice("Profil berhasil diperbarui."); };
+  const requestOwnerDeletion = async (reason: string) => { if (!currentStaff || !clerkUser) throw new Error("Sesi akun tidak tersedia."); const response = await fetch(`${apiBase}/platform/account-deletion-requests`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` }, body: JSON.stringify({ ownerId: clerkUser.id, ownerName: currentStaff.name, email: clerkUser.primaryEmailAddress?.emailAddress || "", reason, status: "pending" }) }); if (!response.ok) throw new Error("Pengajuan tidak dapat dikirim."); showNotice("Pengajuan penghapusan dikirim ke Super Admin."); };
   const completeTransaction = async (draft: Omit<Transaction, "id" | "invoice" | "status" | "createdAt">) => { const response = await fetch(`${apiBase}/transactions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` }, body: JSON.stringify(draft) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Transaksi gagal disimpan"); setTransactions(current => [data.transaction, ...current]); new BroadcastChannel("bycashier-vouchers").postMessage({ type: "transaction-created" }); setOrdered(true); showNotice("Pembayaran berhasil. Nota siap dicetak."); };
   const syncCctv = async () => { const response = await fetch(`${apiBase}/cctv/sync`, { method: "POST", headers: { Authorization: `Bearer ${publicAnonKey}` } }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Sinkronisasi NVR gagal"); showNotice(`${data.checked} kamera diperiksa${data.failed ? `, ${data.failed} gagal` : ""}.`); return data; };
   const resetCctv = async (cameraId: string) => { const response = await fetch(`${apiBase}/cctv/cameras/${cameraId}/reset`, { method: "POST", headers: { Authorization: `Bearer ${publicAnonKey}` } }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Reset koneksi gagal"); showNotice("Permintaan reset koneksi telah dikirim ke media gateway."); };
@@ -227,7 +296,7 @@ export function StoreApp() {
     {notice && <div className="fixed right-4 top-4 z-[100] flex items-center gap-3 rounded-2xl bg-[#1c075c] px-5 py-3.5 text-sm text-white shadow-2xl"><span className="size-2 rounded-full bg-[#ffe51c]" />{notice}</div>}
     <Sidebar active={page} go={go} open={sidebarOpen} close={() => setSidebarOpen(false)} staff={currentStaff} />
     <main className="min-h-screen lg:pl-72">
-      {page !== "dashboard" && page !== "order" && page !== "cctv" && <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-gray-100 bg-white/95 px-5 backdrop-blur lg:px-8"><div className="flex items-center gap-4"><button onClick={() => setSidebarOpen(true)} className="grid size-10 place-items-center rounded-2xl bg-gray-100 transition hover:bg-gray-200 lg:hidden"><Menu size={20}/></button>{title && <h1 className="font-['Space_Grotesk'] text-2xl font-bold text-[#1c075c]">{title}</h1>}</div><div className="flex items-center gap-3"><button className="grid size-10 place-items-center rounded-2xl bg-gray-50 ring-1 ring-gray-100"><Bell size={18} className="text-gray-600"/></button><button onClick={() => currentStaff ? go("profile") : setLoginOpen(true)} className="grid size-10 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-amber-100 to-rose-300 text-lg">{currentStaff?.photo?<img src={currentStaff.photo} alt="Profil" className="size-full object-cover"/>:"👩"}</button></div></header>}
+      {page !== "dashboard" && page !== "order" && page !== "cctv" && !["privacy-policy", "about", "donate"].includes(page) && <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-gray-100 bg-white/95 px-5 backdrop-blur lg:px-8"><div className="flex items-center gap-4"><button onClick={() => setSidebarOpen(true)} className="grid size-10 place-items-center rounded-2xl bg-gray-100 transition hover:bg-gray-200 lg:hidden"><Menu size={20}/></button>{title && <h1 className="font-['Space_Grotesk'] text-2xl font-bold text-[#1c075c]">{title}</h1>}</div><div className="flex items-center gap-3"><button className="grid size-10 place-items-center rounded-2xl bg-gray-50 ring-1 ring-gray-100"><Bell size={18} className="text-gray-600"/></button><button onClick={() => currentStaff ? go("profile") : setLoginOpen(true)} className="grid size-10 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-amber-100 to-rose-300 text-lg">{currentStaff?.photo?<img src={currentStaff.photo} alt="Profil" className="size-full object-cover"/>:"👩"}</button></div></header>}
       {page === "cctv" && <header className="sticky top-0 z-30 flex h-14 items-center justify-between bg-transparent px-5 lg:hidden"><button onClick={() => setSidebarOpen(true)} className="grid size-10 place-items-center rounded-2xl bg-white shadow-sm ring-1 ring-gray-100"><Menu size={18} className="text-gray-600"/></button></header>}
       {page === "dashboard" && currentStaff?.role !== "Kasir" && <header className="sticky top-0 z-30 flex h-14 items-center justify-between bg-transparent px-5 lg:hidden"><button onClick={() => setSidebarOpen(true)} className="grid size-10 place-items-center rounded-2xl bg-white shadow-sm ring-1 ring-gray-100"><Menu size={18} className="text-gray-600"/></button></header>}
       {page === "dashboard" && <AnalyticsDashboard dishes={products} vouchers={vouchers} banners={banners} messages={messages} notifications={notifications} staff={staff} settings={storeSettings} transactions={transactions} categories={categories} currentStaff={currentStaff} onCreateStaff={createStaff} onUpdateStaff={updateStaff} onDeleteStaff={deleteStaff} onAttendance={setAttendance} onSaveSettings={saveStoreSettings} onBroadcast={broadcast} onSendMessage={sendMessage} onUpdateProducts={updateProducts} onUpdateCategories={updateCategories} onCreateVoucher={createVoucher} onCreateBanner={createBanner} onDeleteBanner={deleteBanner} goToCashier={() => go("order")} goToCctv={() => go("cctv")} />}
@@ -235,22 +304,31 @@ export function StoreApp() {
       {page === "closing" && <OperationsPage mode="closing" transactions={transactions} staff={currentStaff} onSave={saveOperation}/>} 
       {page === "reports" && <OperationsPage mode="reports" transactions={transactions} staff={currentStaff} onSave={saveOperation}/>} 
       {page === "settlement" && <OperationsPage mode="settlement" transactions={transactions} staff={currentStaff} onSave={saveOperation}/>} 
+      {page === "kds" && <AccessToolsPage mode="kds" products={products} transactions={transactions}/>}
+      {page === "discounts" && <AccessToolsPage mode="discounts" products={products} transactions={transactions}/>}
+      {page === "refunds" && <AccessToolsPage mode="refunds" products={products} transactions={transactions}/>}
+      {page === "stock" && <AccessToolsPage mode="stock" products={products} transactions={transactions}/>}
+      {page === "ai-assistant" && <SupportToolsPage mode="assistant"/>}
+      {page === "privacy-policy" && <OwnerInfoPage page="privacy" onBack={() => go("settings")} onNotice={showNotice}/>}
+      {page === "about" && <OwnerInfoPage page="about" onBack={() => go("settings")} onNotice={showNotice}/>}
+      {page === "donate" && <OwnerInfoPage page="donate" onBack={() => go("settings")} onNotice={showNotice}/>}
       {page === "order" && <CashierPOS dishes={visibleDishes} categories={categories} banners={banners} vouchers={vouchers} messages={messages} notifications={notifications} storeSettings={storeSettings} currentStaff={currentStaff} sendMessage={sendMessage} favorites={favorites} cart={cart} toggle={toggleFav} add={addToCart} detail={food => { setSelected(food); go("detail"); }} update={updateCart} clear={() => setCart([])} completed={completeTransaction} openSidebar={() => setSidebarOpen(true)}/>}
       {page === "detail" && <DetailPage food={selected} cartQty={cart.find(item => item.food.id === selected.id)?.qty ?? 0} isFav={favorites.includes(selected.id)} onFav={() => toggleFav(selected.id)} onAdd={() => addToCart(selected)} go={go}/>} 
       {page === "favorites" && <FavoritesPage list={products.filter(item => item.active !== false && favorites.includes(item.id))} favorites={favorites} toggle={toggleFav} add={addToCart} detail={food => { setSelected(food); go("detail"); }} go={go}/>} 
       {page === "history" && <HistoryPage filter={historyFilter} setFilter={setHistoryFilter} transactions={transactions}/>} 
       {page === "tracking" && <TrackingPage ordered={ordered}/>} 
       {page === "wallet" && <WalletPage balance={balance} topup={topup} setTopup={setTopup} topupNow={() => { setBalance(current => current + topup); showNotice(`Modal kas Rp ${topup.toLocaleString("id-ID")} tercatat`); }}/>} 
-      {page === "settings" && <SettingsPage onNotice={showNotice}/>} 
-      {page === "profile" && currentStaff && <ProfilePage staff={currentStaff} save={saveProfile} logout={logoutStaff}/>} 
+      {page === "settings" && <SettingsPage onNotice={showNotice}/>}
+      {page === "profile" && currentStaff && <ProfilePage staff={currentStaff} save={saveProfile} logout={logoutStaff} requestDeletion={requestOwnerDeletion}/>}
     </main>
-    <BottomNav active={page} go={go} staff={currentStaff}/>{loginOpen && <AccountLogin close={() => setLoginOpen(false)} />}
+    {ownerApproval && <div className="fixed inset-0 z-[120] grid place-items-center bg-[#12043f]/75 p-4 backdrop-blur-sm"><section className="w-full max-w-md rounded-3xl bg-white p-7 text-[#1c075c] shadow-2xl"><span className="grid size-12 place-items-center rounded-2xl bg-[#ffe51c] text-xl">⏳</span><p className="mt-6 text-[10px] font-bold tracking-[.16em] text-[#7c5cbf]">PENDAFTARAN OWNER</p><h2 className="mt-2 font-['Space_Grotesk'] text-2xl font-bold">{ownerApproval === "pending" ? "Menunggu persetujuan Founder" : "Pendaftaran belum disetujui"}</h2><p className="mt-3 text-sm leading-6 text-gray-500">{ownerApproval === "pending" ? "Akun dan Gmail sudah terverifikasi. Founder BY.CASHIER sedang meninjau pendaftaran bisnis kamu. Status diperbarui otomatis." : "Pendaftaran ini ditolak oleh Founder. Hubungi tim BY.CASHIER untuk informasi berikutnya."}</p><button onClick={() => void logoutStaff()} className="mt-6 w-full rounded-2xl bg-[#1c075c] py-3 text-sm font-bold text-white">Keluar dari akun</button></section></div>}
+    <BottomNav active={page} go={go} staff={currentStaff}/>{loginOpen && <AccountLogin close={() => { setLoginOpen(false); setPage("order"); }} />}
   </div>;
 }
 
 const router = createBrowserRouter([
   { path: "/superadmin/login", Component: SuperAdminLogin },
-  { path: "/superadmin", Component: SuperAdminDashboard },
+  { path: "/superadmin", Component: FounderControlCenter },
   { path: "*", Component: StoreApp },
 ]);
 

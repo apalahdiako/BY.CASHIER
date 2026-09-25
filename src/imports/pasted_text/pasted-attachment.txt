@@ -1,0 +1,174 @@
+KONTEKS
+Bagian ini KHUSUS untuk Dashboard Super Admin platform BY.CASHIER UMKM. JANGAN sentuh/ubah Dashboard Toko (Owner/Admin Cabang/Kasir/Driver) yang sudah ada.
+
+Role Super Admin HANYA SATU LEVEL (tidak ada Sub Admin/permission granular) — 1 akun ini otomatis full akses ke SEMUA fitur & menu di bawah tanpa checklist apapun.
+
+SEMUA data WAJIB real & realtime dari database — tidak ada mockup/hardcoded/dummy. Setiap aksi (approve, suspend, toggle, edit, hapus) harus benar-benar mengubah data di database dan langsung terlihat efeknya tanpa reload manual. Layout WAJIB responsif penuh (desktop/tablet/mobile — sidebar collapse jadi hamburger di layar kecil).
+
+===========================================
+1. AKSES & LOGIN
+===========================================
+- Login Super Admin lewat halaman /login yang SAMA dengan semua role lain (Owner, Admin Cabang, Kasir, Driver) — TIDAK ADA halaman login terpisah
+- Form: Username + PIN
+- Alur backend: sistem cari user by username → cek status akun dulu → validasi PIN → baca role → kalau role = "super_admin", redirect otomatis ke /superadmin/overview
+- Middleware WAJIB cek role "super_admin" di SETIAP request ke /superadmin/* (server-side, bukan cuma sembunyikan di UI) — role lain otomatis ditolak (403/redirect ke /login)
+- Akun Super Admin dibuat manual/seed langsung di database — TIDAK ADA form pendaftaran publik untuk role ini
+- Multi-session diizinkan — Super Admin bisa login bersamaan di lebih dari 1 device tanpa auto-logout device lain
+- Field `role` di database dirancang fleksibel (enum bisa ditambah value baru kapan-kapan), tapi UNTUK SEKARANG hanya value "super_admin" yang dipakai di level platform — jangan bangun sistem permission/checklist apapun untuk saat ini
+
+===========================================
+2. LAYOUT & NAVIGASI GLOBAL
+===========================================
+- Tema visual & sidebar 100% beda dari Dashboard Toko — bukan warna kuning "Delivero", pakai identitas visual netral/profesional (dark navy/slate + aksen kontras)
+- Sidebar collapsible, badge angka notifikasi otomatis di menu yang butuh perhatian (Antrian Approval, Tiket Open, Invoice Overdue)
+- Topbar: nama Super Admin yang login, dropdown akun (ganti PIN, logout), indikator waktu server realtime, search global (cari tenant/user by nama/username/email dari mana saja)
+- Menu sidebar:
+  1. Overview
+  2. Antrian Approval
+  3. Manajemen Tenant
+  4. Manajemen User Global
+  5. Langganan & Billing
+  6. Feature Flags
+  7. Support/Tiket
+  8. Broadcast
+  9. Audit Log
+  10. Promo & Referral
+  11. Knowledge Base
+  12. Developer/API
+  13. Monitoring Sistem
+  14. Pengaturan Sistem
+
+===========================================
+3. HALAMAN: OVERVIEW
+===========================================
+- Card real-time: Total Tenant (Aktif/Pending/Suspended/Expired), Total User Platform, Total Transaksi Hari Ini & Bulan Ini, Total Revenue Hari Ini & Bulan Ini
+- Grafik line: pertumbuhan tenant baru per bulan (12 bulan terakhir)
+- Grafik bar: revenue platform per bulan (12 bulan terakhir)
+- Grafik distribusi tenant per plan (pie/donut)
+- Tabel "Top 5 Tenant Tersibuk" (transaksi & revenue tertinggi)
+- Feed "Aktivitas Terbaru" real-time (tenant baru daftar, tiket baru, invoice lunas, dll)
+- Semua angka auto-update tanpa refresh manual
+
+===========================================
+4. HALAMAN: ANTRIAN APPROVAL
+===========================================
+- Tabel Owner berstatus "pending": Username, Email, Nama Toko, Waktu Daftar
+- Approve → konfirmasi → tenant+owner jadi "active" BERSAMAAN dalam 1 transaksi database, tenant otomatis dapat plan Trial default, email notifikasi ke Owner, tercatat di Audit Log
+- Reject → wajib isi alasan → status "rejected", email notifikasi berisi alasan, tercatat di Audit Log
+- List realtime hilang otomatis setelah diproses
+- Filter by tanggal, search by nama toko/username
+- Empty state: "Tidak ada pendaftaran yang menunggu persetujuan saat ini"
+
+===========================================
+5. HALAMAN: MANAJEMEN TENANT
+===========================================
+- Tabel semua tenant: Nama Toko, Owner, Status, Plan, Jumlah Cabang, Jumlah Staff, Tanggal Daftar, Revenue Total
+- Filter by status & plan, search by nama toko
+- Detail tenant: info toko & owner, daftar cabang & staff (read-only), grafik riwayat transaksi & revenue, riwayat invoice
+- Tombol Suspend/Aktifkan (dengan konfirmasi + alasan)
+- Tombol "Paksa Logout Semua Device" (kasus fraud/darurat)
+- Tombol "Impersonate/Login sebagai Tenant Ini" — masuk ke dashboard tenant untuk troubleshoot langsung, WAJIB muncul banner "Sedang login sebagai [Nama Toko] — Kembali ke Super Admin", auto-expire sesi maks 30 menit, tercatat lengkap di Audit Log (waktu masuk & keluar)
+- Semua perubahan status tercermin di Audit Log otomatis
+
+===========================================
+6. HALAMAN: MANAJEMEN USER GLOBAL
+===========================================
+- Tabel semua user lintas tenant: Username, Email, Role, Nama Toko, Status, Last Login, Last Login Device
+- Filter by role & status, search by username/email
+- Aksi: Reset PIN (generate baru, kirim ke email user, tidak ditampilkan di layar Super Admin), Suspend/Aktifkan
+- Detail user: riwayat login (waktu, device, IP)
+
+===========================================
+7. HALAMAN: LANGGANAN & BILLING
+===========================================
+- Sub-tab "Kelola Plan": CRUD paket langganan (nama, harga, batas cabang/staff/transaksi per bulan, fitur termasuk)
+- Sub-tab "Invoice": tabel semua invoice tenant, filter status (unpaid/paid/overdue), tombol "Tandai Lunas" manual
+- Sub-tab "Reminder Otomatis": scheduler harian, email H-3/H-1/hari-H sebelum trial/langganan habis
+- Auto-downgrade: tenant expired belum bayar → status "downgrade" (fitur premium terkunci, fitur dasar tetap jalan)
+- Ringkasan MRR (Monthly Recurring Revenue) & total pendapatan platform per periode
+
+===========================================
+8. HALAMAN: FEATURE FLAGS
+===========================================
+- Tabel fitur yang bisa di-toggle (Driver Ojek, Split Payment, Multi Cabang, QRIS, dll)
+- Kolom "Global" — toggle untuk SEMUA tenant sekaligus
+- Kolom per-tenant — override khusus tenant tertentu
+- Perubahan realtime tanpa perlu tenant logout ulang
+- Riwayat perubahan flag terhubung ke Audit Log
+
+===========================================
+9. HALAMAN: SUPPORT/TIKET BANTUAN
+===========================================
+- Tabel tiket: Nama Toko, Subjek, Prioritas, Status, filter & search
+- Detail thread percakapan, balas langsung dari sini, ubah status/prioritas
+- SLA indicator (warna beda kalau tiket open >24 jam belum direspon)
+
+===========================================
+10. HALAMAN: BROADCAST
+===========================================
+- Form: Judul, Isi, Target (Semua Tenant/Plan Tertentu/Tenant Spesifik)
+- Kirim ke dashboard tenant + email
+- Riwayat broadcast yang pernah dikirim
+
+===========================================
+11. HALAMAN: PROMO & REFERRAL
+===========================================
+- Sub-tab "Kode Promo": buat kode diskon (persentase/nominal, masa berlaku, kuota, berlaku plan tertentu/semua)
+- Sub-tab "Program Referral": daftar tenant yang mereferensikan tenant baru, status reward, jumlah referral per tenant
+- Riwayat penggunaan kode promo
+
+===========================================
+12. HALAMAN: KNOWLEDGE BASE
+===========================================
+- CRUD artikel bantuan/FAQ yang muncul di dashboard tenant (judul, isi, kategori, urutan tampil)
+- Statistik artikel paling banyak dibaca
+
+===========================================
+13. HALAMAN: DEVELOPER/API
+===========================================
+- Tabel API Key per tenant: generate, revoke, terakhir dipakai kapan
+- Log Webhook: histori sukses/gagal, retry manual
+- Dokumentasi endpoint (statis, referensi)
+
+===========================================
+14. HALAMAN: MONITORING SISTEM
+===========================================
+- Status server/uptime real-time
+- Error rate & log error terbaru (ringkasan)
+- Grafik beban sistem (request per menit/jam)
+- Riwayat percobaan login gagal berlebihan per akun, opsi lock otomatis
+
+===========================================
+15. HALAMAN: PENGATURAN SISTEM
+===========================================
+- Info platform: nama, kontak support, logo, favicon
+- Integrasi: payment gateway, email sender, opsional WhatsApp API
+- Keamanan: opsi aktifkan 2FA untuk akun Super Admin, IP Whitelist akses dashboard
+- Export data: Tenant List, Invoice, Audit Log, User Global → CSV
+- Semua perubahan tercatat di Audit Log
+
+===========================================
+16. HALAMAN: AUDIT LOG (LINTAS SEMUA MENU DI ATAS)
+===========================================
+- Tabel log semua aksi sensitif: Waktu, Aksi, Target, Keterangan, IP Address
+- Filter by jenis aksi & rentang tanggal
+- READ-ONLY total — tidak bisa diedit/dihapus siapapun termasuk Super Admin sendiri
+
+===========================================
+17. LOGIKA AUTH & KEAMANAN (WAJIB DI SEMUA HALAMAN)
+===========================================
+- Session/token simpan: user_id, username, role, tenant_id (null untuk super_admin), status
+- Middleware cek role "super_admin" di SETIAP request server-side ke /superadmin/*
+- PIN wajib hashed, tidak pernah disimpan/ditampilkan plain text di manapun termasuk log
+- Aksi Impersonate wajib auto-expire & auto-logout tercatat
+- Tidak ada dummy data di fitur manapun — semua status, angka, log harus real & konsisten dengan database
+
+===========================================
+18. DEFINITION OF DONE
+===========================================
+- Super Admin login lewat /login yang sama dengan role lain, otomatis redirect ke dashboard dengan sidebar & tema 100% beda dari Dashboard Toko
+- Semua 14 halaman berfungsi nyata dengan data real dari database, tidak ada tampilan statis/hardcoded
+- Setiap aksi sensitif (approve, reject, suspend, impersonate, reset pin, dll) otomatis tercatat di Audit Log dengan detail lengkap
+- Layout responsif penuh di semua ukuran layar, sidebar jadi hamburger di mobile
+- Tidak ada struktur Sub Admin/permission apapun — 1 akun Super Admin full akses ke semua fitur
+- Tidak ada satupun tombol/menu dekoratif (dead-end) — semua terhubung ke logika & database sungguhan

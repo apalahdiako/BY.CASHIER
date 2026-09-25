@@ -48,6 +48,11 @@ const cctvOutletsKey = "bycashier:cctv-outlets";
 const cctvCamerasKey = "bycashier:cctv-cameras";
 const cctvEventsKey = "bycashier:cctv-events";
 const operationsKey = "bycashier:operations";
+const ownerManagedRoles = ["Manager Dashboard", "Supervisor", "Kasir", "Kitchen Display"];
+const platformResources = ["approvals", "tenants", "users", "plans", "invoices", "flags", "tickets", "promos", "referrals", "knowledge-base", "api-keys", "webhooks", "audit-log", "system-settings", "owner-accounts", "account-deletion-requests"] as const;
+type PlatformResource = typeof platformResources[number];
+const platformKey = (resource: PlatformResource) => `bycashier:platform:${resource}`;
+const asPlatformResource = (value: string): PlatformResource | null => platformResources.includes(value as PlatformResource) ? value as PlatformResource : null;
 
 const defaultSettings = { storeName: "BY.CASHIER UMKM", address: "Jakarta Selatan", logo: "", taxRate: 11, receiptFooter: "Terima kasih sudah berbelanja.", paymentMethods: { CASH: true, QRIS: true, Online: true, EDC: true, Split: true }, menuFilters: { bestseller: true, discount: true, popular: true } };
 const digestPin = async (pin: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pin)))).map(byte => byte.toString(16).padStart(2, "0")).join("");
@@ -142,6 +147,7 @@ app.get("/make-server-df04cfb8/staff", async (c) => {
 app.post("/make-server-df04cfb8/staff", async (c) => {
   const draft = await c.req.json<{ name: string; pin: string; role: string; shift: string; hourlyRate: number; permissions: string[] }>();
   if (!draft.name?.trim() || !/^\d{4,8}$/.test(draft.pin || "")) return c.json({ error: "Nama dan PIN 4–8 angka wajib diisi." }, 400);
+  if (!ownerManagedRoles.includes(draft.role || "Kasir")) return c.json({ error: "Role Owner hanya dapat dibuat dari Founder Control Center." }, 403);
   const staff = await kv.get<Record<string, unknown>[]>(staffKey) ?? [];
   const item = { id: crypto.randomUUID(), name: draft.name.trim(), role: draft.role || "Kasir", shift: draft.shift || "Pagi · 08.00–16.00", hourlyRate: Number(draft.hourlyRate) || 0, permissions: draft.permissions || [], attendance: "Belum check-in", pinHash: await digestPin(draft.pin) };
   await kv.set(staffKey, [item, ...staff]);
@@ -168,6 +174,7 @@ app.post("/make-server-df04cfb8/staff/:id/attendance", async (c) => {
 
 app.put("/make-server-df04cfb8/staff/:id", async (c) => {
   const { role, permissions, shift, hourlyRate } = await c.req.json<{ role?: string; permissions?: string[]; shift?: string; hourlyRate?: number }>();
+  if (role && !ownerManagedRoles.includes(role)) return c.json({ error: "Role Owner hanya dapat diubah dari Founder Control Center." }, 403);
   const staff = await kv.get<Record<string, unknown>[]>(staffKey) ?? [];
   const next = staff.map(item => item.id === c.req.param("id") ? { ...item, ...(role ? { role } : {}), ...(Array.isArray(permissions) ? { permissions } : {}), ...(shift ? { shift } : {}), ...(typeof hourlyRate === "number" ? { hourlyRate } : {}) } : item);
   await kv.set(staffKey, next);
@@ -249,6 +256,49 @@ app.post("/make-server-df04cfb8/operations", async (c) => {
   const record = { ...draft, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
   await kv.set(operationsKey, [record, ...records]);
   return c.json({ record }, 201);
+});
+
+app.get("/make-server-df04cfb8/operations", async (c) => {
+  return c.json({ operations: await kv.get(operationsKey) ?? [] });
+});
+
+// Platform resources start empty and are populated only by real Founder actions.
+// Clerk server verification is added when CLERK_SECRET_KEY is configured.
+app.get("/make-server-df04cfb8/platform/:resource", async (c) => {
+  const resource = asPlatformResource(c.req.param("resource"));
+  if (!resource) return c.json({ error: "Resource platform tidak dikenal." }, 404);
+  return c.json({ records: await kv.get(platformKey(resource)) ?? [] });
+});
+
+app.post("/make-server-df04cfb8/platform/:resource", async (c) => {
+  const resource = asPlatformResource(c.req.param("resource"));
+  if (!resource) return c.json({ error: "Resource platform tidak dikenal." }, 404);
+  const payload = await c.req.json<Record<string, unknown>>();
+  const records = await kv.get<Record<string, unknown>[]>(platformKey(resource)) ?? [];
+  const record = { ...payload, id: crypto.randomUUID(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  await kv.set(platformKey(resource), [record, ...records]);
+  return c.json({ record }, 201);
+});
+
+app.put("/make-server-df04cfb8/platform/:resource/:id", async (c) => {
+  const resource = asPlatformResource(c.req.param("resource"));
+  if (!resource) return c.json({ error: "Resource platform tidak dikenal." }, 404);
+  const payload = await c.req.json<Record<string, unknown>>();
+  const records = await kv.get<Record<string, unknown>[]>(platformKey(resource)) ?? [];
+  const next = records.map(record => record.id === c.req.param("id") ? { ...record, ...payload, id: record.id, updatedAt: new Date().toISOString() } : record);
+  const record = next.find(item => item.id === c.req.param("id"));
+  if (!record) return c.json({ error: "Record tidak ditemukan." }, 404);
+  await kv.set(platformKey(resource), next);
+  return c.json({ record });
+});
+
+app.delete("/make-server-df04cfb8/platform/:resource/:id", async (c) => {
+  const resource = asPlatformResource(c.req.param("resource"));
+  if (!resource) return c.json({ error: "Resource platform tidak dikenal." }, 404);
+  const records = await kv.get<Record<string, unknown>[]>(platformKey(resource)) ?? [];
+  const next = records.filter(record => record.id !== c.req.param("id"));
+  await kv.set(platformKey(resource), next);
+  return c.json({ records: next });
 });
 
 Deno.serve(app.fetch);
